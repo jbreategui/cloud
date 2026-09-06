@@ -1,0 +1,46 @@
+{
+	"info": {
+		"name": "Cloud API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080"
+		}
+	],
+	"item": [
+		{
+			"name": "Hello",
+			"request": {
+				"method": "GET",
+				"url": {
+					"raw": "{{baseUrl}}/api/hello",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "hello"]
+				}
+			}
+		},
+		{
+			"name": "Upload Image",
+			"request": {
+				"method": "POST",
+				"url": {
+					"raw": "{{baseUrl}}/api/images",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "images"]
+				},
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": ""
+						}
+					]
+				}
+			}
+		}
+	]
+}
