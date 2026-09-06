@@ -41,6 +41,17 @@
 					]
 				}
 			}
+		},
+		{
+			"name": "List Images",
+			"request": {
+				"method": "GET",
+				"url": {
+					"raw": "{{baseUrl}}/api/images",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "images"]
+				}
+			}
 		}
 	]
 }
