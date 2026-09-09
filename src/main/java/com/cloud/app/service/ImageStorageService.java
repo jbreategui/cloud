@@ -1,5 +1,7 @@
 package com.cloud.app.service;
 
+import com.cloud.app.mapper.ImageMapper;
+import com.cloud.app.model.ImageRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -8,16 +10,16 @@ import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -32,19 +34,21 @@ public class ImageStorageService {
 
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
+    private final ImageMapper imageMapper;
     private final String bucket;
     private final String region;
 
-    public ImageStorageService(S3Client s3Client, S3Presigner s3Presigner,
+    public ImageStorageService(S3Client s3Client, S3Presigner s3Presigner, ImageMapper imageMapper,
                                 @Value("${app.s3.bucket}") String bucket,
                                 @Value("${app.s3.region}") String region) {
         this.s3Client = s3Client;
         this.s3Presigner = s3Presigner;
+        this.imageMapper = imageMapper;
         this.bucket = bucket;
         this.region = region;
     }
 
-    public String upload(MultipartFile file) {
+    public ImageSummary upload(MultipartFile file) {
         if (file.isEmpty()) {
             log.warn("Intento de subida con archivo vacio, nombre original={}", file.getOriginalFilename());
             throw new IllegalArgumentException("El archivo esta vacio");
@@ -77,26 +81,33 @@ public class ImageStorageService {
         }
 
         log.info("Imagen subida con exito: bucket={}, key={}", bucket, key);
-        return key;
+
+        ImageRecord record = new ImageRecord(key, file.getOriginalFilename(), contentType, file.getSize());
+        record.setUploadedAt(Instant.now());
+        try {
+            imageMapper.insert(record);
+        } catch (RuntimeException e) {
+            log.error("Error registrando la imagen en la base de datos, revirtiendo subida a S3: key={}", key, e);
+            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
+            throw e;
+        }
+
+        return toSummary(record);
     }
 
     public List<ImageSummary> listImages() {
-        ListObjectsV2Request request = ListObjectsV2Request.builder()
-                .bucket(bucket)
-                .prefix("images/")
-                .build();
-
-        List<ImageSummary> images = s3Client.listObjectsV2Paginator(request).contents().stream()
+        List<ImageSummary> images = imageMapper.findAllOrderByUploadedAtDesc().stream()
                 .map(this::toSummary)
                 .toList();
 
-        log.info("Listado de imagenes: bucket={}, prefix=images/, total={}", bucket, images.size());
+        log.info("Listado de imagenes desde la base de datos: total={}", images.size());
         return images;
     }
 
-    private ImageSummary toSummary(S3Object object) {
-        String url = publicUrl(object.key());
-        return new ImageSummary(object.key(), object.size(), object.lastModified(), url);
+    private ImageSummary toSummary(ImageRecord record) {
+        String url = publicUrl(record.getObjectKey());
+        return new ImageSummary(record.getObjectKey(), record.getOriginalFilename(), record.getContentType(),
+                record.getSizeBytes(), record.getUploadedAt(), url);
     }
 
     /**

@@ -29,11 +29,11 @@ public class ImageController {
     }
 
     @PostMapping("/api/images")
-    public ResponseEntity<Map<String, String>> upload(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<ImageSummary> upload(@RequestParam("file") MultipartFile file) {
         log.info("Request de subida recibida: nombre original={}, size={} bytes",
                 file.getOriginalFilename(), file.getSize());
-        String key = imageStorageService.upload(file);
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("key", key));
+        ImageSummary image = imageStorageService.upload(file);
+        return ResponseEntity.status(HttpStatus.CREATED).body(image);
     }
 
     @GetMapping("/api/images")
@@ -50,8 +50,8 @@ public class ImageController {
 
     @ExceptionHandler(SdkException.class)
     public ResponseEntity<Map<String, String>> handleS3Error(SdkException e) {
-        log.error("Fallo al subir a S3", e);
+        log.error("Fallo de comunicacion con S3", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", "No se pudo subir el archivo, intenta de nuevo"));
+                .body(Map.of("error", "No se pudo completar la operacion con S3, verifica tu conexion e intenta de nuevo"));
     }
 }

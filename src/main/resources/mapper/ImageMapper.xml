@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cloud.app.mapper.ImageMapper">
+
+    <resultMap id="ImageResultMap" type="com.cloud.app.model.ImageRecord">
+        <id property="id" column="id"/>
+        <result property="objectKey" column="object_key"/>
+        <result property="originalFilename" column="original_filename"/>
+        <result property="contentType" column="content_type"/>
+        <result property="sizeBytes" column="size_bytes"/>
+        <result property="uploadedAt" column="uploaded_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.cloud.app.model.ImageRecord" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO images (object_key, original_filename, content_type, size_bytes, uploaded_at)
+        VALUES (#{objectKey}, #{originalFilename}, #{contentType}, #{sizeBytes}, #{uploadedAt})
+    </insert>
+
+    <select id="findAllOrderByUploadedAtDesc" resultMap="ImageResultMap">
+        SELECT id, object_key, original_filename, content_type, size_bytes, uploaded_at
+        FROM images
+        ORDER BY uploaded_at DESC
+    </select>
+
+</mapper>
