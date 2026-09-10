@@ -7,6 +7,10 @@
 		{
 			"key": "baseUrl",
 			"value": "http://localhost:8080"
+		},
+		{
+			"key": "filename",
+			"value": "reemplazar-con-el-campo-filename-devuelto-por-upload-o-list.jpg"
 		}
 	],
 	"item": [
@@ -50,6 +54,17 @@
 					"raw": "{{baseUrl}}/api/images",
 					"host": ["{{baseUrl}}"],
 					"path": ["api", "images"]
+				}
+			}
+		},
+		{
+			"name": "Like Image",
+			"request": {
+				"method": "POST",
+				"url": {
+					"raw": "{{baseUrl}}/api/images/{{filename}}/like",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "images", "{{filename}}", "like"]
 				}
 			}
 		}

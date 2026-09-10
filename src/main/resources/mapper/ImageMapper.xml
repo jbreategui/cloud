@@ -22,4 +22,8 @@
         ORDER BY uploaded_at DESC
     </select>
 
+    <select id="existsByObjectKey" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM images WHERE object_key = #{objectKey})
+    </select>
+
 </mapper>

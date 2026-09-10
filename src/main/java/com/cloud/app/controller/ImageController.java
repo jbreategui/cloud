@@ -6,13 +6,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import software.amazon.awssdk.core.exception.SdkException;
 
 import java.util.List;
 import java.util.Map;
@@ -42,16 +41,11 @@ public class ImageController {
         return imageStorageService.listImages();
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> handleInvalidFile(IllegalArgumentException e) {
-        log.warn("Subida rechazada: {}", e.getMessage());
-        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-    }
-
-    @ExceptionHandler(SdkException.class)
-    public ResponseEntity<Map<String, String>> handleS3Error(SdkException e) {
-        log.error("Fallo de comunicacion con S3", e);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", "No se pudo completar la operacion con S3, verifica tu conexion e intenta de nuevo"));
+    @PostMapping("/api/images/{filename}/like")
+    public Map<String, Object> like(@PathVariable String filename) {
+        String objectKey = ImageStorageService.KEY_PREFIX + filename;
+        log.info("Request de like recibida: objectKey={}", objectKey);
+        long likes = imageStorageService.like(objectKey);
+        return Map.of("key", objectKey, "likes", likes);
     }
 }

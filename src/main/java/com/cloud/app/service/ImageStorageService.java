@@ -1,5 +1,7 @@
 package com.cloud.app.service;
 
+import com.cloud.app.exception.ImageNotFoundException;
+import com.cloud.app.exception.InvalidImageException;
 import com.cloud.app.mapper.ImageMapper;
 import com.cloud.app.model.ImageRecord;
 import org.slf4j.Logger;
@@ -21,6 +23,7 @@ import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -29,21 +32,26 @@ public class ImageStorageService {
 
     private static final Logger log = LoggerFactory.getLogger(ImageStorageService.class);
 
+    public static final String KEY_PREFIX = "images/";
+
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private static final Duration URL_DURATION = Duration.ofMinutes(15);
 
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final ImageMapper imageMapper;
+    private final LikeService likeService;
     private final String bucket;
     private final String region;
 
     public ImageStorageService(S3Client s3Client, S3Presigner s3Presigner, ImageMapper imageMapper,
+                                LikeService likeService,
                                 @Value("${app.s3.bucket}") String bucket,
                                 @Value("${app.s3.region}") String region) {
         this.s3Client = s3Client;
         this.s3Presigner = s3Presigner;
         this.imageMapper = imageMapper;
+        this.likeService = likeService;
         this.bucket = bucket;
         this.region = region;
     }
@@ -51,15 +59,15 @@ public class ImageStorageService {
     public ImageSummary upload(MultipartFile file) {
         if (file.isEmpty()) {
             log.warn("Intento de subida con archivo vacio, nombre original={}", file.getOriginalFilename());
-            throw new IllegalArgumentException("El archivo esta vacio");
+            throw new InvalidImageException("El archivo esta vacio");
         }
         String contentType = file.getContentType();
         if (contentType == null || !ALLOWED_CONTENT_TYPES.contains(contentType)) {
             log.warn("Intento de subida con content-type no permitido: {}", contentType);
-            throw new IllegalArgumentException("Tipo de archivo no permitido: " + contentType);
+            throw new InvalidImageException("Tipo de archivo no permitido: " + contentType);
         }
 
-        String key = "images/" + UUID.randomUUID() + extensionFor(contentType);
+        String key = KEY_PREFIX + UUID.randomUUID() + extensionFor(contentType);
 
         PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(bucket)
@@ -92,22 +100,34 @@ public class ImageStorageService {
             throw e;
         }
 
-        return toSummary(record);
+        return toSummary(record, 0L);
+    }
+
+    public long like(String objectKey) {
+        if (!imageMapper.existsByObjectKey(objectKey)) {
+            throw new ImageNotFoundException("No existe una imagen con key: " + objectKey);
+        }
+        return likeService.like(objectKey);
     }
 
     public List<ImageSummary> listImages() {
-        List<ImageSummary> images = imageMapper.findAllOrderByUploadedAtDesc().stream()
-                .map(this::toSummary)
+        List<ImageRecord> records = imageMapper.findAllOrderByUploadedAtDesc();
+        List<String> objectKeys = records.stream().map(ImageRecord::getObjectKey).toList();
+        Map<String, Long> likesByKey = likeService.getLikes(objectKeys);
+
+        List<ImageSummary> images = records.stream()
+                .map(record -> toSummary(record, likesByKey.getOrDefault(record.getObjectKey(), 0L)))
                 .toList();
 
         log.info("Listado de imagenes desde la base de datos: total={}", images.size());
         return images;
     }
 
-    private ImageSummary toSummary(ImageRecord record) {
+    private ImageSummary toSummary(ImageRecord record, long likes) {
         String url = publicUrl(record.getObjectKey());
-        return new ImageSummary(record.getObjectKey(), record.getOriginalFilename(), record.getContentType(),
-                record.getSizeBytes(), record.getUploadedAt(), url);
+        String filename = record.getObjectKey().substring(KEY_PREFIX.length());
+        return new ImageSummary(record.getObjectKey(), filename, record.getOriginalFilename(), record.getContentType(),
+                record.getSizeBytes(), record.getUploadedAt(), url, likes);
     }
 
     /**
