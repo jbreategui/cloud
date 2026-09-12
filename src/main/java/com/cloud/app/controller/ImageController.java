@@ -2,6 +2,7 @@ package com.cloud.app.controller;
 
 import com.cloud.app.service.ImageStorageService;
 import com.cloud.app.service.ImageSummary;
+import com.cloud.app.service.LikeResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -14,7 +15,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 public class ImageController {
@@ -42,10 +42,8 @@ public class ImageController {
     }
 
     @PostMapping("/api/images/{filename}/like")
-    public Map<String, Object> like(@PathVariable String filename) {
-        String objectKey = ImageStorageService.KEY_PREFIX + filename;
-        log.info("Request de like recibida: objectKey={}", objectKey);
-        long likes = imageStorageService.like(objectKey);
-        return Map.of("key", objectKey, "likes", likes);
+    public LikeResult like(@PathVariable String filename) {
+        log.info("Request de like recibida: filename={}", filename);
+        return imageStorageService.like(filename);
     }
 }

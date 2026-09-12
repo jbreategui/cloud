@@ -1,41 +1,56 @@
+# La base de datos Postgres corre en un EC2 aparte (ver docs/db/docker-compose.yml).
+# DB_HOST debe ser la IP privada de ese EC2 (mismo VPC que este). No hay servicio
+# "postgres" aqui ni red compartida: la app se conecta por red de la VPC, no por
+# red interna de Docker.
+#
+# Un solo puerto expuesto al host: el de nginx (APP_PORT). nginx reparte:
+#   /api/*  -> cloud (backend)
+#   /*      -> archivos estaticos del frontend (build de Vite)
+#
+# frontend no sirve nada: compila y copia dist/ al volumen "frontend_dist",
+# que nginx monta como su document root. nginx espera a que ese contenedor
+# termine bien (exit 0) antes de arrancar (depends_on con
+# service_completed_successfully).
 services:
-  postgres:
-    image: postgres:17
-    container_name: docs-postgres
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "${DB_PORT}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: always
-    networks:
-      - red-docs
   cloud:
     container_name: cloud
     build:
       context: ./
       dockerfile: ./Dockerfile
-    ports:
-      - "${APP_PORT}:8080"
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
       SERVER_PORT: 8080
-      DB_HOST: postgres
-      DB_PORT: 5432
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
-    networks:
-      - red-docs
     restart: always
+
+  frontend:
+    container_name: frontend
+    build:
+      context: ./frontend
+      dockerfile: ./Dockerfile
+    volumes:
+      - frontend_dist:/dist_output
+    restart: "no"
+
+  nginx:
+    container_name: nginx
+    build:
+      context: ./nginx
+      dockerfile: ./Dockerfile
+    volumes:
+      - frontend_dist:/usr/share/nginx/html:ro
+    ports:
+      - "${APP_PORT}:80"
     depends_on:
-      - postgres
+      cloud:
+        condition: service_started
+      frontend:
+        condition: service_completed_successfully
+    restart: always
 
 volumes:
-  postgres_data:
-    name: postgres_data
-networks:
-  red-docs:
+  frontend_dist:

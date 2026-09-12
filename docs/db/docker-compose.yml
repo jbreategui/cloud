@@ -1,0 +1,28 @@
+# Compose para el EC2 dedicado a Postgres. Correr en esa instancia, no en el EC2 de la app.
+# Security group de este EC2: puerto 5432 abierto SOLO al security group del EC2 de la app,
+# nunca 0.0.0.0/0.
+#
+# Setup (una sola vez):
+#   1. Copiar este archivo y .env.example a la instancia (misma carpeta).
+#   2. cp .env.example .env  y ajustar valores.
+#   3. docker compose up -d
+#   4. Aplicar el esquema una sola vez: psql -h localhost -U <DB_USERNAME> -d <DB_NAME> -f schema.sql
+#      (schema.sql esta en docs/schema.sql de este repo; copiarlo tambien a la instancia)
+#      Necesario porque la app corre con spring.sql.init.mode=never en prod.
+services:
+  postgres:
+    image: postgres:17
+    container_name: docs-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  postgres_data:
+    name: postgres_data

@@ -32,7 +32,7 @@ public class ImageStorageService {
 
     private static final Logger log = LoggerFactory.getLogger(ImageStorageService.class);
 
-    public static final String KEY_PREFIX = "images/";
+    private static final String KEY_PREFIX = "images/";
 
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private static final Duration URL_DURATION = Duration.ofMinutes(15);
@@ -103,11 +103,13 @@ public class ImageStorageService {
         return toSummary(record, 0L);
     }
 
-    public long like(String objectKey) {
+    public LikeResult like(String filename) {
+        String objectKey = KEY_PREFIX + filename;
         if (!imageMapper.existsByObjectKey(objectKey)) {
             throw new ImageNotFoundException("No existe una imagen con key: " + objectKey);
         }
-        return likeService.like(objectKey);
+        long likes = likeService.like(objectKey);
+        return new LikeResult(objectKey, likes);
     }
 
     public List<ImageSummary> listImages() {
