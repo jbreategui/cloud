@@ -1,7 +1,9 @@
 # La base de datos Postgres corre en un EC2 aparte (ver docs/db/docker-compose.yml).
-# DB_HOST debe ser la IP privada de ese EC2 (mismo VPC que este). No hay servicio
-# "postgres" aqui ni red compartida: la app se conecta por red de la VPC, no por
-# red interna de Docker.
+# No hay servicio "postgres" aqui ni red compartida: la app se conecta por red de
+# la VPC, no por red interna de Docker. Las credenciales (host, port, dbname,
+# username, password) las obtiene cloud desde AWS Secrets Manager (secreto
+# "sm_posgress") usando el IAM Role de la instancia EC2 host de este compose,
+# no de variables de entorno.
 #
 # Un solo puerto expuesto al host: el de nginx (APP_PORT). nginx reparte:
 #   /api/*  -> cloud (backend)
@@ -20,11 +22,6 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
       SERVER_PORT: 8080
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-      DB_NAME: ${DB_NAME}
-      DB_USERNAME: ${DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD}
     restart: always
 
   frontend:
