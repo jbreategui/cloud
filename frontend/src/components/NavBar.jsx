@@ -23,7 +23,7 @@ function ServerBadge() {
 
   return (
     <span className="hidden md:inline text-xs font-medium text-gray-500 shrink-0">
-      Servidor: {serverInfo.server} · IP: {serverInfo.ip}
+      Servidor: {serverInfo.server}
     </span>
   );
 }
