@@ -1,10 +1,32 @@
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
+import { getServerInfo } from '../api/client';
 import Icon from './Icon';
 
 const linkClasses = ({ isActive }) =>
   `flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
     isActive ? 'bg-[#1a1a1a] text-white' : 'text-gray-600 hover:bg-gray-200/70'
   }`;
+
+function ServerBadge() {
+  const [serverInfo, setServerInfo] = useState(null);
+
+  useEffect(() => {
+    getServerInfo()
+      .then(setServerInfo)
+      .catch(() => setServerInfo(null));
+  }, []);
+
+  if (!serverInfo) {
+    return null;
+  }
+
+  return (
+    <span className="hidden md:inline text-xs font-medium text-gray-500 shrink-0">
+      Servidor: {serverInfo.server} · IP: {serverInfo.ip}
+    </span>
+  );
+}
 
 export default function NavBar() {
   return (
@@ -27,6 +49,8 @@ export default function NavBar() {
             <span className="hidden sm:inline">Crear</span>
           </NavLink>
         </nav>
+
+        <ServerBadge />
       </div>
     </header>
   );
