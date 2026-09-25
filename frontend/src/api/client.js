@@ -17,3 +17,7 @@ export function listImages() {
 export function likeImage(filename) {
   return apiClient.post(`/api/images/${filename}/like`).then((res) => res.data);
 }
+
+export function getServerInfo() {
+  return apiClient.get('/api/server').then((res) => res.data);
+}
