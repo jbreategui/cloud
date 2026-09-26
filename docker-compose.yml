@@ -1,18 +1,3 @@
-# La base de datos Postgres corre en un EC2 aparte (ver docs/db/docker-compose.yml).
-# No hay servicio "postgres" aqui ni red compartida: la app se conecta por red de
-# la VPC, no por red interna de Docker. Las credenciales (host, port, dbname,
-# username, password) las obtiene cloud desde AWS Secrets Manager (secreto
-# "sm_posgress") usando el IAM Role de la instancia EC2 host de este compose,
-# no de variables de entorno.
-#
-# Un solo puerto expuesto al host: el de nginx (APP_PORT). nginx reparte:
-#   /api/*  -> cloud (backend)
-#   /*      -> archivos estaticos del frontend (build de Vite)
-#
-# frontend no sirve nada: compila y copia dist/ al volumen "frontend_dist",
-# que nginx monta como su document root. nginx espera a que ese contenedor
-# termine bien (exit 0) antes de arrancar (depends_on con
-# service_completed_successfully).
 services:
   cloud:
     container_name: cloud
@@ -22,6 +7,8 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
       SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
     restart: always
 
   frontend:
