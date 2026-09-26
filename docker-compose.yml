@@ -9,6 +9,13 @@ services:
       SERVER_PORT: 8080
     ports:
       - "8080:8080"
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-2
+        awslogs-group: /aws/ec2/cloud-app
+        awslogs-stream: cloud
+        awslogs-create-group: "true"
     restart: always
 
   frontend:
