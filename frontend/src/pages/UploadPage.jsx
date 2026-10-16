@@ -7,6 +7,7 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export default function UploadPage() {
   const [file, setFile] = useState(null);
+  const [sensitive, setSensitive] = useState(false);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -46,7 +47,7 @@ export default function UploadPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await uploadImage(file);
+      await uploadImage(file, sensitive);
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.error ?? 'No se pudo subir la imagen. Intenta de nuevo.');
@@ -103,6 +104,21 @@ export default function UploadPage() {
               </div>
             )}
           </div>
+
+          <label className="flex items-start gap-3 rounded-xl border border-gray-200 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
+            <input
+              type="checkbox"
+              checked={sensitive}
+              onChange={(e) => setSensitive(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-[#e60023] cursor-pointer"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-gray-800">Contenido sensible</span>
+              <span className="block text-xs text-gray-500">
+                En la galería se mostrará desenfocada hasta que alguien decida verla.
+              </span>
+            </span>
+          </label>
 
           {error && (
             <div className="flex items-center gap-2 text-sm text-[#ad081b] bg-red-50 rounded-lg px-3 py-2">

@@ -6,3 +6,10 @@ CREATE TABLE IF NOT EXISTS images (
     size_bytes BIGINT NOT NULL,
     uploaded_at TIMESTAMP NOT NULL DEFAULT now()
 );
+
+-- Contenido sensible (ver docs/migrations/002_sensitive_images.sql). Idempotente para
+-- bases ya creadas: las filas existentes quedan como no sensibles y sin estado.
+ALTER TABLE images ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE images ADD COLUMN IF NOT EXISTS processing_status VARCHAR(20)
+    CHECK (processing_status IN ('PENDING', 'DONE', 'FAILED'));
+ALTER TABLE images ADD COLUMN IF NOT EXISTS blurred_key VARCHAR(512);

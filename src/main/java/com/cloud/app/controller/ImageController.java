@@ -28,10 +28,11 @@ public class ImageController {
     }
 
     @PostMapping("/api/images")
-    public ResponseEntity<ImageSummary> upload(@RequestParam("file") MultipartFile file) {
-        log.info("Request de subida recibida: nombre original={}, size={} bytes",
-                file.getOriginalFilename(), file.getSize());
-        ImageSummary image = imageStorageService.upload(file);
+    public ResponseEntity<ImageSummary> upload(@RequestParam("file") MultipartFile file,
+                                               @RequestParam(value = "sensitive", defaultValue = "false") boolean sensitive) {
+        log.info("Request de subida recibida: nombre original={}, size={} bytes, sensitive={}",
+                file.getOriginalFilename(), file.getSize(), sensitive);
+        ImageSummary image = imageStorageService.upload(file, sensitive);
         return ResponseEntity.status(HttpStatus.CREATED).body(image);
     }
 
@@ -45,5 +46,11 @@ public class ImageController {
     public LikeResult like(@PathVariable String filename) {
         log.info("Request de like recibida: filename={}", filename);
         return imageStorageService.like(filename);
+    }
+
+    @PostMapping("/api/images/{filename}/blur")
+    public ImageSummary retryBlur(@PathVariable String filename) {
+        log.info("Request de reintento de desenfoque recibida: filename={}", filename);
+        return imageStorageService.retryBlur(filename);
     }
 }

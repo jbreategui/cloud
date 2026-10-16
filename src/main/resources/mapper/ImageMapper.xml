@@ -9,15 +9,24 @@
         <result property="contentType" column="content_type"/>
         <result property="sizeBytes" column="size_bytes"/>
         <result property="uploadedAt" column="uploaded_at"/>
+        <result property="sensitive" column="sensitive"/>
+        <result property="processingStatus" column="processing_status"/>
+        <result property="blurredKey" column="blurred_key"/>
     </resultMap>
 
+    <sql id="columns">
+        id, object_key, original_filename, content_type, size_bytes, uploaded_at, sensitive, processing_status, blurred_key
+    </sql>
+
     <insert id="insert" parameterType="com.cloud.app.model.ImageRecord" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO images (object_key, original_filename, content_type, size_bytes, uploaded_at)
-        VALUES (#{objectKey}, #{originalFilename}, #{contentType}, #{sizeBytes}, #{uploadedAt})
+        INSERT INTO images (object_key, original_filename, content_type, size_bytes, uploaded_at, sensitive,
+                            processing_status, blurred_key)
+        VALUES (#{objectKey}, #{originalFilename}, #{contentType}, #{sizeBytes}, #{uploadedAt}, #{sensitive},
+                #{processingStatus}, #{blurredKey})
     </insert>
 
     <select id="findAllOrderByUploadedAtDesc" resultMap="ImageResultMap">
-        SELECT id, object_key, original_filename, content_type, size_bytes, uploaded_at
+        SELECT <include refid="columns"/>
         FROM images
         ORDER BY uploaded_at DESC
     </select>
@@ -25,5 +34,18 @@
     <select id="existsByObjectKey" resultType="boolean">
         SELECT EXISTS(SELECT 1 FROM images WHERE object_key = #{objectKey})
     </select>
+
+    <select id="findByObjectKey" resultMap="ImageResultMap">
+        SELECT <include refid="columns"/>
+        FROM images
+        WHERE object_key = #{objectKey}
+    </select>
+
+    <update id="updateProcessing" parameterType="com.cloud.app.model.ImageRecord">
+        UPDATE images
+        SET processing_status = #{processingStatus},
+            blurred_key = #{blurredKey}
+        WHERE object_key = #{objectKey}
+    </update>
 
 </mapper>

@@ -10,6 +10,9 @@ public class ImageRecord {
     private String contentType;
     private long sizeBytes;
     private Instant uploadedAt;
+    private boolean sensitive;
+    private ProcessingStatus processingStatus;
+    private String blurredKey;
 
     public ImageRecord() {
     }
@@ -67,5 +70,29 @@ public class ImageRecord {
 
     public void setUploadedAt(Instant uploadedAt) {
         this.uploadedAt = uploadedAt;
+    }
+
+    public boolean isSensitive() {
+        return sensitive;
+    }
+
+    public void setSensitive(boolean sensitive) {
+        this.sensitive = sensitive;
+    }
+
+    public ProcessingStatus getProcessingStatus() {
+        return processingStatus;
+    }
+
+    public void setProcessingStatus(ProcessingStatus processingStatus) {
+        this.processingStatus = processingStatus;
+    }
+
+    public String getBlurredKey() {
+        return blurredKey;
+    }
+
+    public void setBlurredKey(String blurredKey) {
+        this.blurredKey = blurredKey;
     }
 }

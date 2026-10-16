@@ -1,9 +1,11 @@
 package com.cloud.app.service;
 
+import com.cloud.app.exception.BlurProcessingException;
 import com.cloud.app.exception.ImageNotFoundException;
 import com.cloud.app.exception.InvalidImageException;
 import com.cloud.app.mapper.ImageMapper;
 import com.cloud.app.model.ImageRecord;
+import com.cloud.app.model.ProcessingStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,22 +43,28 @@ public class ImageStorageService {
     private final S3Presigner s3Presigner;
     private final ImageMapper imageMapper;
     private final LikeService likeService;
+    private final BlurService blurService;
     private final String bucket;
     private final String region;
 
     public ImageStorageService(S3Client s3Client, S3Presigner s3Presigner, ImageMapper imageMapper,
-                                LikeService likeService,
+                                LikeService likeService, BlurService blurService,
                                 @Value("${app.s3.bucket}") String bucket,
                                 @Value("${app.s3.region}") String region) {
         this.s3Client = s3Client;
         this.s3Presigner = s3Presigner;
         this.imageMapper = imageMapper;
         this.likeService = likeService;
+        this.blurService = blurService;
         this.bucket = bucket;
         this.region = region;
     }
 
     public ImageSummary upload(MultipartFile file) {
+        return upload(file, false);
+    }
+
+    public ImageSummary upload(MultipartFile file, boolean sensitive) {
         if (file.isEmpty()) {
             log.warn("Intento de subida con archivo vacio, nombre original={}", file.getOriginalFilename());
             throw new InvalidImageException("El archivo esta vacio");
@@ -75,8 +83,8 @@ public class ImageStorageService {
                 .contentType(contentType)
                 .build();
 
-        log.info("Subiendo imagen a S3: bucket={}, key={}, size={} bytes, contentType={}",
-                bucket, key, file.getSize(), contentType);
+        log.info("Subiendo imagen a S3: bucket={}, key={}, size={} bytes, contentType={}, sensitive={}",
+                bucket, key, file.getSize(), contentType, sensitive);
 
         try {
             s3Client.putObject(request, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
@@ -92,6 +100,10 @@ public class ImageStorageService {
 
         ImageRecord record = new ImageRecord(key, file.getOriginalFilename(), contentType, file.getSize());
         record.setUploadedAt(Instant.now());
+        record.setSensitive(sensitive);
+        if (sensitive) {
+            record.setProcessingStatus(ProcessingStatus.PENDING);
+        }
         try {
             imageMapper.insert(record);
         } catch (RuntimeException e) {
@@ -100,7 +112,40 @@ public class ImageStorageService {
             throw e;
         }
 
+        // A partir de aqui el original y sus metadatos ya estan guardados: un fallo de Lambda
+        // no los revierte, solo deja processingStatus=FAILED para reintentar con retryBlur.
+        if (sensitive) {
+            generateBlurredCopy(record);
+        }
+
         return toSummary(record, 0L);
+    }
+
+    /**
+     * Reintenta generar la copia desenfocada de una imagen sensible sin volver a subir el
+     * original. Si la copia ya existe no invoca Lambda; si no, la Lambda sobrescribe siempre la
+     * misma key (sensitive/{uuid}.webp), asi que reintentar no duplica copias ni registros.
+     */
+    public ImageSummary retryBlur(String filename) {
+        String objectKey = KEY_PREFIX + filename;
+        ImageRecord record = imageMapper.findByObjectKey(objectKey);
+        if (record == null) {
+            throw new ImageNotFoundException("No existe una imagen con key: " + objectKey);
+        }
+        if (!record.isSensitive()) {
+            throw new InvalidImageException("La imagen no esta marcada como contenido sensible: " + objectKey);
+        }
+
+        if (record.getProcessingStatus() == ProcessingStatus.DONE && record.getBlurredKey() != null) {
+            log.info("Reintento ignorado, la copia desenfocada ya existe: key={}, blurredKey={}",
+                    objectKey, record.getBlurredKey());
+        } else {
+            log.info("Reintentando copia desenfocada: key={}, estado previo={}", objectKey, record.getProcessingStatus());
+            generateBlurredCopy(record);
+        }
+
+        long likes = likeService.getLikes(List.of(objectKey)).getOrDefault(objectKey, 0L);
+        return toSummary(record, likes);
     }
 
     public LikeResult like(String filename) {
@@ -125,11 +170,27 @@ public class ImageStorageService {
         return images;
     }
 
+    private void generateBlurredCopy(ImageRecord record) {
+        try {
+            String blurredKey = blurService.blur(record.getObjectKey());
+            record.setProcessingStatus(ProcessingStatus.DONE);
+            record.setBlurredKey(blurredKey);
+        } catch (BlurProcessingException e) {
+            log.error("No se pudo generar la copia desenfocada, se conserva el original: key={}",
+                    record.getObjectKey(), e);
+            record.setProcessingStatus(ProcessingStatus.FAILED);
+            record.setBlurredKey(null);
+        }
+        imageMapper.updateProcessing(record);
+    }
+
     private ImageSummary toSummary(ImageRecord record, long likes) {
         String url = publicUrl(record.getObjectKey());
         String filename = record.getObjectKey().substring(KEY_PREFIX.length());
+        String blurredUrl = record.getBlurredKey() == null ? null : publicUrl(record.getBlurredKey());
         return new ImageSummary(record.getObjectKey(), filename, record.getOriginalFilename(), record.getContentType(),
-                record.getSizeBytes(), record.getUploadedAt(), url, likes);
+                record.getSizeBytes(), record.getUploadedAt(), url, likes, record.isSensitive(),
+                record.getProcessingStatus(), record.getBlurredKey(), blurredUrl);
     }
 
     /**

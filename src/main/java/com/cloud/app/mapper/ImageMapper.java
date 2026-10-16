@@ -13,4 +13,8 @@ public interface ImageMapper {
     List<ImageRecord> findAllOrderByUploadedAtDesc();
 
     boolean existsByObjectKey(String objectKey);
+
+    ImageRecord findByObjectKey(String objectKey);
+
+    void updateProcessing(ImageRecord image);
 }

@@ -1,0 +1,2 @@
+# boto3/botocore ya vienen en el runtime de Python de Lambda; solo hay que empaquetar Pillow.
+Pillow==12.2.0

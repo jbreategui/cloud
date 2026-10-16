@@ -59,6 +59,10 @@
 			<groupId>software.amazon.awssdk</groupId>
 			<artifactId>secretsmanager</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>lambda</artifactId>
+		</dependency>
 
 		<dependency>
 			<groupId>org.mybatis.spring.boot</groupId>

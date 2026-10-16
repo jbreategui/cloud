@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Masonry from 'react-masonry-css';
 import { Link } from 'react-router-dom';
-import { likeImage, listImages } from '../api/client';
+import { likeImage, listImages, retryBlur } from '../api/client';
 import Icon from '../components/Icon';
 
 const breakpoints = { default: 5, 1280: 4, 1024: 3, 640: 2, 400: 1 };
@@ -36,10 +36,77 @@ function EmptyState() {
   );
 }
 
-function ImageCard({ image, onLike }) {
+function SensitiveOverlay({ image, onReveal, onRetry }) {
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState(null);
+  const status = image.processingStatus;
+
+  async function handleRetry(event) {
+    event.stopPropagation();
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      const updated = await onRetry(image.filename);
+      if (updated.processingStatus !== 'DONE') {
+        setRetryError('Sigue sin poder generarse. Intenta más tarde.');
+      }
+    } catch {
+      setRetryError('No se pudo reintentar. Revisa tu conexión.');
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onReveal}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onReveal()}
+      className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center text-white bg-black/35 cursor-pointer"
+    >
+      <Icon name="visibility_off" className="text-[32px] drop-shadow" />
+      <p className="text-sm font-bold drop-shadow">Contenido sensible</p>
+
+      {status === 'DONE' && <p className="text-xs text-white/85">Haz clic para ver la imagen</p>}
+
+      {status === 'PENDING' && (
+        <p className="flex items-center gap-1 text-xs text-white/85">
+          <Icon name="progress_activity" className="text-[14px] animate-spin" />
+          Generando vista previa…
+        </p>
+      )}
+
+      {status === 'FAILED' && <p className="text-xs text-white/85">No se pudo generar la vista previa.</p>}
+
+      {status !== 'DONE' && (
+        <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
+          <button
+            type="button"
+            onClick={handleRetry}
+            disabled={retrying}
+            className="inline-flex items-center gap-1 rounded-full bg-white text-gray-900 text-xs font-semibold px-3 py-1.5 hover:bg-gray-100 disabled:opacity-60"
+          >
+            <Icon name={retrying ? 'progress_activity' : 'refresh'} className={`text-[16px] ${retrying ? 'animate-spin' : ''}`} />
+            {retrying ? 'Reintentando…' : 'Reintentar'}
+          </button>
+          <span className="text-xs font-semibold underline underline-offset-2">Ver imagen</span>
+        </div>
+      )}
+
+      {retryError && <p className="text-xs font-medium text-red-100 bg-black/40 rounded-md px-2 py-1">{retryError}</p>}
+    </div>
+  );
+}
+
+function ImageCard({ image, onLike, onRetry }) {
   const [burstId, setBurstId] = useState(0);
   const [bouncing, setBouncing] = useState(false);
+  const [revealed, setRevealed] = useState(false);
   const bounceTimeoutRef = useRef(null);
+
+  const hidden = image.sensitive && !revealed;
+  const blurredReady = image.processingStatus === 'DONE' && image.blurredUrl;
 
   function triggerLike() {
     setBurstId((id) => id + 1);
@@ -52,14 +119,37 @@ function ImageCard({ image, onLike }) {
   return (
     <figure className="group relative rounded-2xl overflow-hidden bg-white border border-gray-200/70 shadow-sm hover:shadow-xl transition-shadow duration-200">
       <div className="relative overflow-hidden select-none">
-        <img
-          src={image.url}
-          alt={image.originalFilename}
-          loading="lazy"
-          onDoubleClick={triggerLike}
-          className="w-full block transition-transform duration-300 group-hover:scale-105"
-        />
+        {!hidden && (
+          <img
+            src={image.url}
+            alt={image.originalFilename}
+            loading="lazy"
+            onDoubleClick={triggerLike}
+            className="w-full block transition-transform duration-300 group-hover:scale-105"
+          />
+        )}
+
+        {hidden && blurredReady && (
+          <img src={image.blurredUrl} alt="Contenido sensible" loading="lazy" className="w-full block" />
+        )}
+
+        {/* Sin copia desenfocada (procesando o fallida) nunca se muestra el original sin pedirlo. */}
+        {hidden && !blurredReady && <div className="w-full h-64 bg-gradient-to-br from-gray-500 to-gray-700" />}
+
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none" />
+
+        {hidden && <SensitiveOverlay image={image} onReveal={() => setRevealed(true)} onRetry={onRetry} />}
+
+        {image.sensitive && revealed && (
+          <button
+            type="button"
+            onClick={() => setRevealed(false)}
+            aria-label="Ocultar contenido sensible"
+            className="absolute top-3 left-3 w-10 h-10 rounded-full bg-white/90 hover:bg-white flex items-center justify-center shadow-md backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <Icon name="visibility_off" className="text-[20px] text-gray-700" />
+          </button>
+        )}
 
         {burstId > 0 && (
           <div
@@ -89,7 +179,7 @@ function ImageCard({ image, onLike }) {
           />
         </button>
 
-        <div className="hidden sm:flex items-center gap-1 absolute bottom-2.5 left-3 text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="hidden sm:flex items-center gap-1 absolute bottom-2.5 left-3 text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
           <Icon name="favorite" fill className="text-[15px]" />
           {image.likes}
         </div>
@@ -132,6 +222,12 @@ export default function GalleryPage() {
     }
   }
 
+  async function handleRetry(filename) {
+    const updated = await retryBlur(filename);
+    setImages((current) => current.map((img) => (img.filename === filename ? updated : img)));
+    return updated;
+  }
+
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
@@ -157,7 +253,7 @@ export default function GalleryPage() {
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
       <Masonry breakpointCols={breakpoints} className="flex gap-4" columnClassName="flex flex-col gap-4">
         {images.map((image) => (
-          <ImageCard key={image.key} image={image} onLike={handleLike} />
+          <ImageCard key={image.key} image={image} onLike={handleLike} onRetry={handleRetry} />
         ))}
       </Masonry>
     </div>
