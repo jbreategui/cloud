@@ -19,7 +19,7 @@ services:
       APP_LAMBDA_FUNCTION_NAME: ${APP_LAMBDA_FUNCTION_NAME:-thaki-blur-image}
 
     ports:
-      - "443:443"
+      - "443:8080"
 
     volumes:
       - /etc/thaki/application-ssl.properties:/etc/thaki/application-ssl.properties:ro
