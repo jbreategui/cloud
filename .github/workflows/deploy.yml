@@ -54,6 +54,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Debug OIDC claims
+        uses: github/actions-oidc-debugger@v1
+        with:
+          audience: sts.amazonaws.com
+
       - name: Configure AWS credentials (OIDC -> STS AssumeRoleWithWebIdentity)
         uses: aws-actions/configure-aws-credentials@v6
         with:
