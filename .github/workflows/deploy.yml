@@ -1,20 +1,24 @@
-# CI/CD Thaki Backend - Etapa 1: build + test + publicacion de la imagen en Amazon ECR.
-# (El despliegue en EC2 sera una etapa posterior; este workflow NO toca ninguna instancia.)
-name: Build and push to ECR
+
+# CI/CD Thaki Backend
+# Etapas: test + build + publicación en ECR + despliegue en EC2.
+#
+# Frontend: S3 + CloudFront (https://thaki.site).
+# API: https://api.thaki.site -> EC2:443 -> Spring Boot.
+
+name: CI/CD Thaki Backend
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:   # Ejecutar manualmente desde la pestaña Actions (debe elegirse la rama main).
+  workflow_dispatch:
 
-# Permisos por defecto del GITHUB_TOKEN: solo lectura del repo. Cada job pide lo minimo que necesita.
+# Permisos mínimos por defecto.
 permissions:
   contents: read
 
-# Si llegan dos pushes seguidos, no cancela el que esta en curso, pero evita publicaciones simultaneas
-# que podrian dejar "latest" apuntando a un commit mas viejo.
+# Evita publicaciones y despliegues simultáneos.
 concurrency:
-  group: ecr-publish-${{ github.ref }}
+  group: thaki-cicd-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -22,12 +26,15 @@ env:
   ECR_REPOSITORY: thaki-backend
 
 jobs:
-  # 1) Compila y ejecuta las pruebas. NO tiene acceso a AWS (no puede pedir token OIDC).
+
+  # 1. Compilar y ejecutar pruebas.
   test:
     name: Build & test (Maven)
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -37,25 +44,27 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: maven            # Cachea ~/.m2 entre ejecuciones (clave = hash de pom.xml).
+          cache: maven
 
       - name: Compile and run tests
         run: bash ./mvnw -B -ntp verify
 
-  # 2) Construye la imagen con el Dockerfile existente y la publica en ECR via OIDC.
+
+  # 2. Construir imagen Docker y publicarla en ECR.
   build-and-push:
     name: Build & push Docker image
-    needs: test                   # Solo se publica si las pruebas pasaron.
+    needs: test
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
-      id-token: write             # Necesario para que GitHub emita el JWT OIDC que AWS STS valida.
+      id-token: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-
-      - name: Configure AWS credentials (OIDC -> STS AssumeRoleWithWebIdentity)
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
@@ -76,7 +85,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
-          provenance: false       # Imagen simple (sin manifest de attestation) -> mas facil de leer en ECR y de hacer pull.
+          provenance: false
           tags: |
             ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
@@ -91,3 +100,61 @@ jobs:
             echo "- \`${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}\`"
             echo "- \`${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+
+  # 3. Copiar configuración y desplegar en EC2.
+  deploy:
+    name: Deploy to EC2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Copiar únicamente docker-compose.yml.
+      # El archivo .env permanece en EC2.
+      - name: Copy Docker Compose to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          source: docker-compose.yml
+          target: /home/ubuntu/thaki/
+
+      # Conectarse a EC2 y actualizar el contenedor.
+      - name: Deploy application
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+
+            cd /home/ubuntu/thaki
+
+            echo "1. Autenticando Docker en ECR..."
+
+            aws ecr get-login-password --region us-east-2 | docker login \
+              --username AWS \
+              --password-stdin 525388658102.dkr.ecr.us-east-2.amazonaws.com
+
+            echo "2. Validando Docker Compose..."
+
+            docker compose config --quiet
+
+            echo "3. Descargando nueva imagen..."
+
+            docker compose pull
+
+            echo "4. Actualizando aplicación..."
+
+            docker compose up -d --remove-orphans
+
+            echo "5. Verificando contenedor..."
+
+            docker compose ps
+
+            echo "Despliegue finalizado."
