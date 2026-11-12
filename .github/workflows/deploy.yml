@@ -1,0 +1,92 @@
+# CI/CD Thaki Backend - Etapa 1: build + test + publicacion de la imagen en Amazon ECR.
+# (El despliegue en EC2 sera una etapa posterior; este workflow NO toca ninguna instancia.)
+name: Build and push to ECR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # Ejecutar manualmente desde la pestaña Actions (debe elegirse la rama main).
+
+# Permisos por defecto del GITHUB_TOKEN: solo lectura del repo. Cada job pide lo minimo que necesita.
+permissions:
+  contents: read
+
+# Si llegan dos pushes seguidos, no cancela el que esta en curso, pero evita publicaciones simultaneas
+# que podrian dejar "latest" apuntando a un commit mas viejo.
+concurrency:
+  group: ecr-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-2
+  ECR_REPOSITORY: thaki-backend
+
+jobs:
+  # 1) Compila y ejecuta las pruebas. NO tiene acceso a AWS (no puede pedir token OIDC).
+  test:
+    name: Build & test (Maven)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven            # Cachea ~/.m2 entre ejecuciones (clave = hash de pom.xml).
+
+      - name: Compile and run tests
+        run: bash ./mvnw -B -ntp verify
+
+  # 2) Construye la imagen con el Dockerfile existente y la publica en ECR via OIDC.
+  build-and-push:
+    name: Build & push Docker image
+    needs: test                   # Solo se publica si las pruebas pasaron.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write             # Necesario para que GitHub emita el JWT OIDC que AWS STS valida.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure AWS credentials (OIDC -> STS AssumeRoleWithWebIdentity)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: gha-thaki-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false       # Imagen simple (sin manifest de attestation) -> mas facil de leer en ECR y de hacer pull.
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          {
+            echo "### Imagen publicada en ECR"
+            echo ""
+            echo "- \`${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}\`"
+            echo "- \`${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest\`"
+          } >> "$GITHUB_STEP_SUMMARY"
