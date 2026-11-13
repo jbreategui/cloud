@@ -9,7 +9,16 @@ name: CI/CD Thaki Backend
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+
+  pull_request:
+    branches:
+      - main
+      - develop
+
   workflow_dispatch:
 
 # Permisos mínimos por defecto.
@@ -54,6 +63,7 @@ jobs:
   build-and-push:
     name: Build & push Docker image
     needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     permissions:
@@ -106,6 +116,7 @@ jobs:
   deploy:
     name: Deploy to EC2
     needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
